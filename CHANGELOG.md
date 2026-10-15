@@ -1,5 +1,12 @@
 # museo kit changelog
 
+## 0.2.2
+
+**Setup finds both ring names again**
+- The setup sheet matches "Muse" (`RingSetup.ringNameMatch`), so it lists `Museo_47cf` (firmware 10.14 and later) and `Muse_47cf` (earlier firmware), as muse 54 does. 0.2.0 matched "Museo" only.
+- Apps list `Muse` in `NSAccessorySetupBluetoothNames`.
+- The plain scan picks rings with "Muse" in the name. `RingStatus.advertisedName` takes names starting `Museo_` or `Muse_`.
+
 ## 0.2.1
 
 **Firmware updates: time left, and the screen stays on**

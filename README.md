@@ -102,10 +102,10 @@ BundledFirmware.version    // "10.14"
 
 ## Install
 
-**From GitHub.** File › Add Package Dependencies…, enter `https://github.com/its4ff/museo-kit`, and pin the version museo build uses (`0.1.0`, exact). In a `Package.swift`:
+**From GitHub.** File › Add Package Dependencies…, enter `https://github.com/its4ff/museo-kit`, and pin the version museo build uses (`0.2.2`, exact). In a `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/its4ff/museo-kit", exact: "0.1.0")
+.package(url: "https://github.com/its4ff/museo-kit", exact: "0.2.2")
 ```
 
 **Working on the kit itself?** Clone it next to your app's folder and open the app through a workspace that also holds `../museo-kit`. Xcode then uses the local copy in place of the tagged one (museo build's `scripts/local-kit.sh` makes that workspace).
@@ -122,16 +122,16 @@ Needs iOS 26 or later, Xcode 26 and Swift tools 6.2. The kit brings in Nordic's 
 <key>NSAccessorySetupBluetoothServices</key>
 <array><string>0004</string></array>
 <key>NSAccessorySetupBluetoothNames</key>
-<array><string>Museo</string></array>
+<array><string>Muse</string></array>
 <key>UIBackgroundModes</key>
 <array><string>bluetooth-central</string></array>
 <key>NSBluetoothAlwaysUsageDescription</key>
 <string>museo links to your ring over bluetooth to bring in what you say.</string>
 ```
 
-- **The three `NSAccessorySetup…` keys** turn on AccessorySetupKit: the ring is set up through iOS's sheet, and there's no Bluetooth prompt. The service and name must match what the kit's sheet looks for (`0004`, `Museo`), or iOS refuses to show it. The sheet matches on those two, so no company identifier key is needed.
-- **Only museo rings are set up.** Firmware 10.14 and later advertise `Museo_47cf`. A ring on earlier firmware (`Muse_47cf`) never shows in the sheet, but one that was set up before keeps linking, so it can take the update.
-- **Without them,** setup falls back to a plain Bluetooth scan that connects the closest museo ring that answers, and iOS asks for Bluetooth permission the usual way. Remove all three, never one.
+- **The three `NSAccessorySetup…` keys** turn on AccessorySetupKit: the ring is set up through iOS's sheet, and there's no Bluetooth prompt. The service and name must match what the kit's sheet looks for (`0004`, `Muse`), or iOS refuses to show it. The sheet matches on those two, so no company identifier key is needed.
+- **Both ring names are set up.** The sheet matches "Muse", so it finds `Museo_47cf` (firmware 10.14 and later) and `Muse_47cf` (earlier firmware).
+- **Without them,** setup falls back to a plain Bluetooth scan that connects the closest ring with "Muse" in its name that answers, and iOS asks for Bluetooth permission the usual way. Remove all three, never one.
 - **`bluetooth-central`** lets recordings come in while the app is in the background, and lets iOS relaunch the app for the ring.
 - **`NSBluetoothAlwaysUsageDescription`** is the line iOS shows if it asks for Bluetooth (the plain-scan fallback). Keep it either way.
 

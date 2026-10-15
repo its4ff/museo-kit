@@ -289,7 +289,7 @@ public final class RingModel {
     /// A name the ring itself advertised ("Museo_47cf", or "Muse_47cf" before 10.14), not
     /// the manager's "muse ring" placeholder.
     private static func isAdvertisedName(_ name: String) -> Bool {
-        name.localizedCaseInsensitiveContains(RingSetup.ringNameMatch) || name.hasPrefix("Muse_")
+        name.hasPrefix("Museo_") || name.hasPrefix("Muse_")
     }
 
     private func setupNote(_ setup: RingSetup) -> String? {

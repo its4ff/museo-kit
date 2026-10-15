@@ -16,7 +16,7 @@ import UIKit
 /// `disconnect()`, `forgetPreferredRing()`, `stopPickerScan()`).
 ///
 /// How a ring gets set up:
-/// 1. `showPicker()` opens the system sheet (service `0004`, a name with `Museo` in it).
+/// 1. `showPicker()` opens the system sheet (service `0004`, a name with `Muse` in it).
 /// 2. iOS pairs the ring and sends `accessoryAdded`. The id is held until the sheet is gone,
 ///    so the link never races the system pair UI.
 /// 3. On `pickerDidDismiss`, the id goes to `ble.connect(ringID:)`. If CoreBluetooth can't
@@ -42,10 +42,9 @@ public final class RingSetup {
     /// What the picker matches. Both must also be in Info.plist
     /// (`NSAccessorySetupBluetoothServices`, `NSAccessorySetupBluetoothNames`) or iOS refuses.
     nonisolated static let ringService = "0004"
-    /// What a ring's name must contain to be set up. Firmware 10.14 and later advertise
-    /// `Museo_47cf`. Earlier rings say `Muse_47cf` and can't be set up, but one that's
-    /// already set up keeps linking (iOS reconnects it by id), so it can take the update.
-    nonisolated static let ringNameMatch = "Museo"
+    /// What a ring's name must contain to be set up. "Muse" covers both names:
+    /// `Museo_47cf` from firmware 10.14 on, `Muse_47cf` before.
+    nonisolated static let ringNameMatch = "Muse"
     /// How long a handoff or "look for it" watches a scan for the ring before giving up.
     nonisolated static let lookWindow: TimeInterval = 20
 
@@ -514,7 +513,7 @@ public final class RingSetup {
         // LE pairing plus HID (play and pause on a tap). Never `.confirmAuthorization` with
         // LE pairing, and never HID service 1812: iOS keeps it from apps.
         descriptor.supportedOptions = [.bluetoothPairingLE, .bluetoothHID]
-        // Always by name: only museo rings are set up, never the service alone.
+        // Always by name ("Muse" in it), never the service alone.
         descriptor.bluetoothNameSubstring = ringNameMatch
         // iOS shows another app's name and picture instead when that app set the ring up first.
         return [ASPickerDisplayItem(name: Museo.ringName, productImage: productImage, descriptor: descriptor)]
@@ -657,7 +656,7 @@ public final class RingSetup {
         watch(ring.id)
     }
 
-    /// Rings a plain scan may set up: only those named museo.
+    /// Rings a plain scan may set up: only those with "Muse" in the name.
     private var newRings: [DiscoveredRing] {
         ble?.discoveredRings.filter { $0.name.localizedCaseInsensitiveContains(Self.ringNameMatch) } ?? []
     }
