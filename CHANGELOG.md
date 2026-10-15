@@ -1,5 +1,12 @@
 # museo kit changelog
 
+## 0.2.3
+
+**Fix: firmware updates sent several times slower than muse OS**
+- Nordic's library opens its own bluetooth central for SMP. Its first state is often "not ready", so the upload's request for the ring's buffer size failed, and the library quietly fell back to defaults: one small packet per round trip. On a ring, 7% took about as long as a whole muse OS update.
+- The updater now asks the ring for its SMP parameters until that central is up and the ring answers (up to 8 tries, 250 ms apart), as muse OS does, then starts. It also sets the upload's reassembly buffer from the ring's answer, so big writes go even if the library's own request misses.
+- Logs `[museo][fw] smp probe N: …` for each try.
+
 ## 0.2.2
 
 **Setup finds both ring names again**

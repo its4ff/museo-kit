@@ -102,10 +102,10 @@ BundledFirmware.version    // "10.14"
 
 ## Install
 
-**From GitHub.** File › Add Package Dependencies…, enter `https://github.com/its4ff/museo-kit`, and pin the version museo build uses (`0.2.2`, exact). In a `Package.swift`:
+**From GitHub.** File › Add Package Dependencies…, enter `https://github.com/its4ff/museo-kit`, and pin the version museo build uses (`0.2.3`, exact). In a `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/its4ff/museo-kit", exact: "0.2.2")
+.package(url: "https://github.com/its4ff/museo-kit", exact: "0.2.3")
 ```
 
 **Working on the kit itself?** Clone it next to your app's folder and open the app through a workspace that also holds `../museo-kit`. Xcode then uses the local copy in place of the tagged one (museo build's `scripts/local-kit.sh` makes that workspace).

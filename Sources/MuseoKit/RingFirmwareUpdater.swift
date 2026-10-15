@@ -132,6 +132,20 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
             let package = try McuMgrPackage(from: packageURL)
             let transport = McuMgrBleTransport(ringID)
             self.transport = transport
+
+            // Before the upload asks the ring for its buffer, wait until the transport's own
+            // bluetooth central is up and the ring answers SMP. Asked too early, the parameters
+            // call fails and Nordic's library quietly sends one small packet per round trip,
+            // several times slower (muse OS does the same wait).
+            status = "checking the ring"
+            let probe = await Self.waitForSmp(transport)
+            if case .poweredOff = probe {
+                fail("bluetooth is off")
+                finishTransport()
+                ble.finishFirmwareUpdate()
+                return
+            }
+
             let manager = FirmwareUpgradeManager(transport: transport, delegate: self)
             self.manager = manager
 
@@ -140,6 +154,11 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
             configuration.eraseAppSettings = false
             configuration.pipelineDepth = 2
             configuration.upgradeMode = .confirmOnly
+            // The ring's reassembly buffer, so big writes go even if the library's own
+            // parameters call misses.
+            if case .ready(let bufferSize?) = probe, bufferSize > 0 {
+                configuration.reassemblyBufferSize = min(bufferSize, UInt64(UInt16.max))
+            }
 
             status = "sending firmware"
             phase = .sending(progress: 0)
@@ -150,6 +169,51 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
             finishTransport()
             ble.finishFirmwareUpdate()
         }
+    }
+
+    // MARK: SMP readiness
+
+    /// Asks the ring for its SMP parameters until the transport's central is powered on and
+    /// the ring answers: up to 8 tries, 250 ms apart. Any answer, even an error, means SMP is up.
+    private static func waitForSmp(_ transport: McuMgrBleTransport) async -> SmpProbe {
+        let defaults = DefaultManager(transport: transport)
+        var last = SmpProbe.notReady
+        for attempt in 1...8 {
+            last = await probe(defaults)
+            print("[museo][fw] smp probe \(attempt): \(last)")
+            if case .notReady = last {
+                try? await Task.sleep(for: .milliseconds(250))
+                continue
+            }
+            return last
+        }
+        return last
+    }
+
+    nonisolated private static func probe(_ defaults: DefaultManager) async -> SmpProbe {
+        await withCheckedContinuation { continuation in
+            let once = SmpProbeOnce(continuation)
+            defaults.params { response, error in
+                once.resume(classify(response: response, error: error))
+            }
+        }
+    }
+
+    nonisolated private static func classify(response: McuMgrParametersResponse?, error: Error?) -> SmpProbe {
+        if let error {
+            if let transportError = error as? McuMgrBleTransportError {
+                switch transportError {
+                case .centralManagerPoweredOff: return .poweredOff
+                case .centralManagerNotReady: return .notReady
+                default: break
+                }
+            }
+            let text = error.localizedDescription.lowercased()
+            if text.contains("powered off") { return .poweredOff }
+            if text.contains("not ready") { return .notReady }
+            return .ready(bufferSize: nil)
+        }
+        return .ready(bufferSize: response?.bufferSize)
     }
 
     private func fail(_ message: String) {
@@ -317,5 +381,39 @@ extension RingFirmwareUpdater: FirmwareUpgradeDelegate {
             self.status = "sending firmware"
             self.updateEstimate(bytesSent: bytesSent, imageSize: imageSize, at: timestamp)
         }
+    }
+}
+
+/// What a parameters request said about the SMP link.
+nonisolated private enum SmpProbe: Sendable, CustomStringConvertible {
+    case ready(bufferSize: UInt64?)
+    case notReady
+    case poweredOff
+
+    var description: String {
+        switch self {
+        case .ready(let size?): "ready, buffer \(size)"
+        case .ready: "ready"
+        case .notReady: "central not ready"
+        case .poweredOff: "bluetooth off"
+        }
+    }
+}
+
+/// Resumes a probe once, whichever callback comes first.
+nonisolated private final class SmpProbeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<SmpProbe, Never>?
+
+    init(_ continuation: CheckedContinuation<SmpProbe, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(_ value: SmpProbe) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
     }
 }
