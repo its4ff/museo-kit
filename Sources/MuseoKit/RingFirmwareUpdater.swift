@@ -50,6 +50,10 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
 
     @Published public private(set) var phase: Phase = .idle
     @Published public private(set) var status: String = ""
+    /// When the whole update should be done, sending through restart. Nil when idle or
+    /// settled. Seeded from the last update's speed, then from the measured speed while
+    /// sending; it only creeps later a little at a time, so a countdown never jumps back.
+    @Published public private(set) var estimatedFinishAt: Date?
 
     private weak var ble: RingBLEManager?
     private var transport: McuMgrBleTransport?
@@ -57,6 +61,16 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
     #if canImport(UIKit)
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     #endif
+
+    // MARK: Time left
+    private var sendClock: Date?
+    private var smoothedRate: Double = 0
+    private var imageBytes = 0
+    /// Confirming and restarting after the last byte.
+    private static let afterSendSlack: TimeInterval = 18
+    /// Bytes a second before this phone has sent an update (muse OS measured about this).
+    private static let firstSendRate: Double = 28_000
+    private static let sendRateKey = "museo.kit.firmware.sendRate"
 
     /// `Museo.firmware` is the app's one updater. Lab screens and previews may make their own.
     public override init() {
@@ -129,6 +143,7 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
 
             status = "sending firmware"
             phase = .sending(progress: 0)
+            seedEstimate()
             manager.start(package: package, using: configuration)
         } catch {
             fail(error.localizedDescription)
@@ -140,7 +155,66 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
     private func fail(_ message: String) {
         phase = .failed(message.kitQuiet)
         status = ""
+        resetTiming()
         endBackgroundTask()
+    }
+
+    // MARK: Estimate
+
+    private var rememberedSendRate: Double {
+        let stored = UserDefaults.standard.double(forKey: Self.sendRateKey)
+        return stored > 6_000 ? stored : Self.firstSendRate
+    }
+
+    private func seedEstimate() {
+        sendClock = nil
+        smoothedRate = 0
+        imageBytes = 0
+        // Close to the bundled image's size; the first progress report corrects it.
+        estimatedFinishAt = Date().addingTimeInterval(430_000 / rememberedSendRate + Self.afterSendSlack)
+    }
+
+    private func updateEstimate(bytesSent: Int, imageSize: Int, at time: Date) {
+        imageBytes = imageSize
+        if sendClock == nil, bytesSent > 0 { sendClock = time }
+        var rate = rememberedSendRate
+        if let start = sendClock {
+            let elapsed = time.timeIntervalSince(start)
+            if elapsed >= 0.9, bytesSent >= 12_000 {
+                let measured = Double(bytesSent) / elapsed
+                smoothedRate = smoothedRate == 0 ? measured : smoothedRate * 0.65 + measured * 0.35
+                rate = smoothedRate
+            }
+        }
+        let sendLeft = Double(max(0, imageSize - bytesSent)) / max(rate, 6_000)
+        let candidate = time.addingTimeInterval(sendLeft + Self.afterSendSlack)
+        if let current = estimatedFinishAt, candidate > current {
+            estimatedFinishAt = min(candidate, current.addingTimeInterval(1.8))
+        } else {
+            estimatedFinishAt = candidate
+        }
+    }
+
+    /// After the image is sent, at least `floor` and at most `ceiling` seconds remain.
+    private func keepEstimate(atLeast floor: TimeInterval, atMost ceiling: TimeInterval, else fallback: TimeInterval) {
+        let left = estimatedFinishAt?.timeIntervalSinceNow ?? 0
+        if left < floor || left > ceiling {
+            estimatedFinishAt = Date().addingTimeInterval(fallback)
+        }
+    }
+
+    /// The next update starts from this phone's real speed.
+    private func rememberSendRate() {
+        guard let start = sendClock, imageBytes > 0 else { return }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 2 else { return }
+        UserDefaults.standard.set(Double(imageBytes) / elapsed, forKey: Self.sendRateKey)
+    }
+
+    private func resetTiming() {
+        sendClock = nil
+        smoothedRate = 0
+        estimatedFinishAt = nil
     }
 
     private func finishTransport() {
@@ -149,8 +223,11 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
         manager = nil
     }
 
+    /// Keeps the screen on and asks for background time: a phone that locks mid-send can
+    /// suspend the app before the ring has the whole image.
     private func beginBackgroundTask() {
         #if canImport(UIKit)
+        UIApplication.shared.isIdleTimerDisabled = true
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "museo.firmware") { [weak self] in
             self?.endBackgroundTask()
         }
@@ -159,6 +236,7 @@ public final class RingFirmwareUpdater: NSObject, ObservableObject {
 
     private func endBackgroundTask() {
         #if canImport(UIKit)
+        UIApplication.shared.isIdleTimerDisabled = false
         guard backgroundTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTask)
         backgroundTask = .invalid
@@ -188,9 +266,11 @@ extension RingFirmwareUpdater: FirmwareUpgradeDelegate {
             case .confirm, .test, .eraseAppSettings:
                 self.phase = .confirming
                 self.status = "confirming image"
+                self.keepEstimate(atLeast: 4, atMost: .infinity, else: 20)
             case .reset, .resetIntoFirmwareLoader:
                 self.phase = .resetting
                 self.status = "restarting ring"
+                self.keepEstimate(atLeast: 10, atMost: 22, else: 16)
             case .success, .none:
                 break
             }
@@ -202,6 +282,8 @@ extension RingFirmwareUpdater: FirmwareUpgradeDelegate {
             guard let self else { return }
             self.phase = .success
             self.status = "firmware updated"
+            self.rememberSendRate()
+            self.resetTiming()
             self.finishTransport()
             self.endBackgroundTask()
             try? await Task.sleep(nanoseconds: 800_000_000)
@@ -233,6 +315,7 @@ extension RingFirmwareUpdater: FirmwareUpgradeDelegate {
             let progress = min(max(Double(bytesSent) / Double(imageSize), 0), 1)
             self.phase = .sending(progress: progress)
             self.status = "sending firmware"
+            self.updateEstimate(bytesSent: bytesSent, imageSize: imageSize, at: timestamp)
         }
     }
 }

@@ -1,5 +1,11 @@
 # museo kit changelog
 
+## 0.2.1
+
+**Firmware updates: time left, and the screen stays on**
+- `RingFirmwareUpdater.estimatedFinishAt`: when the whole update should be done, sending through restart. It starts from this phone's last update speed (about 28 KB/s the first time), follows the measured speed while sending, and only creeps later a little at a time, so a countdown never jumps back. Nil when idle or settled. Ported from muse OS.
+- The screen stays on while an update runs (`isIdleTimerDisabled`), so a phone that would lock mid-send doesn't suspend the app before the ring has the whole image.
+
 ## 0.2.0
 
 **Firmware 10.14** (`museo_20261014A`)
