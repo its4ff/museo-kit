@@ -152,7 +152,7 @@ public final class RingModel {
         }
 
         next.name = setup.authorizedName ?? Museo.ringName
-        next.advertisedName = ble.deviceName.hasPrefix(RingSetup.ringNamePrefix) ? ble.deviceName : nil
+        next.advertisedName = Self.isAdvertisedName(ble.deviceName) ? ble.deviceName : nil
         next.userDisconnected = setup.userDisconnected && link != .linked
         next.canRename = setup.canRename
 
@@ -284,6 +284,12 @@ public final class RingModel {
             return live
         }
         return defaults?.object(forKey: Self.freeStorageKey) as? Int
+    }
+
+    /// A name the ring itself advertised ("Museo_47cf", or "Muse_47cf" before 10.14), not
+    /// the manager's "muse ring" placeholder.
+    private static func isAdvertisedName(_ name: String) -> Bool {
+        name.localizedCaseInsensitiveContains(RingSetup.ringNameMatch) || name.hasPrefix("Muse_")
     }
 
     private func setupNote(_ setup: RingSetup) -> String? {

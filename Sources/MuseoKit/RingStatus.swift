@@ -29,7 +29,7 @@ public nonisolated struct RingStatus: Equatable, Sendable {
     }
     /// The ring's name in iOS (AccessorySetupKit), `Museo.ringName` until renamed.
     public var name: String = Museo.ringName
-    /// What the ring advertises, like "Muse_47cf". Nil until it has linked once.
+    /// What the ring advertises, like "Museo_47cf". Nil until it has linked once.
     public var advertisedName: String?
 
     /// 0 to 100 in steps of 5. Nil until the ring has answered once.
@@ -173,7 +173,7 @@ public nonisolated struct RingStatus: Equatable, Sendable {
         return parts.joined(separator: ", ")
     }
 
-    /// The device card line: "linked · 80% · Muse_47cf", "away · last read 9:14a".
+    /// The device card line: "linked · 80% · Museo_47cf", "away · last read 9:14a".
     public var deviceLine: String {
         switch link {
         case .notSetUp:
@@ -248,7 +248,7 @@ public nonisolated extension RingStatus {
 
     static let linked: RingStatus = {
         var status = RingStatus(link: .linked)
-        status.advertisedName = "Muse_47cf"
+        status.advertisedName = "Museo_47cf"
         status.battery = 80
         status.batteryReadAt = recently
         status.freeStoragePercent = 86

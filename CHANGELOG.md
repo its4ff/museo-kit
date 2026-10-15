@@ -1,5 +1,17 @@
 # museo kit changelog
 
+## 0.2.0
+
+**Firmware 10.14** (`museo_20261014A`)
+- `Resources/MuseRing.zip` is the 10.14 image: MCUboot version 1.64.0+0, 434,500 bytes, the same `manifest.json` plus signed, encrypted image as before. `BundledFirmware.stamp` is `20261014`, so `BundledFirmware.version` says "10.14".
+- From this image on, the ring advertises `Museo_47cf` instead of `Muse_47cf`.
+
+**Only museo rings are set up**
+- The setup sheet always matches the name `Museo` (`RingSetup.ringNameMatch`) with service `0004`. It no longer drops the name filter after an empty sheet, so a ring on older firmware never shows.
+- Apps list `Museo` in `NSAccessorySetupBluetoothNames` (it was `Muse_`). iOS refuses the sheet when the two don't match.
+- Without AccessorySetupKit, the plain scan picks only rings with `Museo` in the name.
+- A ring that was set up before keeps linking (iOS reconnects it by id, not by name), so it can take the 10.14 update. `RingStatus.advertisedName` shows both `Museo_47cf` and `Muse_47cf`.
+
 ## 0.1.0
 
 The ring kit leaves the muse build repo and becomes its own package.

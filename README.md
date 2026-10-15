@@ -93,7 +93,7 @@ Also `disconnect`, `remove`, `rename`, `setAutoSync(_:)` and `setAutoClear(_:)`.
 
 ```swift
 Museo.firmware.start()     // phase: .preparing, .sending(progress:), .confirming, .resetting, .success, .failed
-BundledFirmware.version    // "9.06"
+BundledFirmware.version    // "10.14"
 ```
 
 **Setup** runs on its own through `RingActions`. `RingSetup.isEnabled` says whether the app's Info.plist turns AccessorySetupKit on, and `RingSetup.shared.logText` holds the last 50 setup events for a console.
@@ -122,15 +122,16 @@ Needs iOS 26 or later, Xcode 26 and Swift tools 6.2. The kit brings in Nordic's 
 <key>NSAccessorySetupBluetoothServices</key>
 <array><string>0004</string></array>
 <key>NSAccessorySetupBluetoothNames</key>
-<array><string>Muse_</string></array>
+<array><string>Museo</string></array>
 <key>UIBackgroundModes</key>
 <array><string>bluetooth-central</string></array>
 <key>NSBluetoothAlwaysUsageDescription</key>
 <string>museo links to your ring over bluetooth to bring in what you say.</string>
 ```
 
-- **The three `NSAccessorySetup…` keys** turn on AccessorySetupKit: the ring is set up through iOS's sheet, and there's no Bluetooth prompt. The service and name must match what the kit's sheet looks for (`0004`, `Muse_`), or iOS refuses to show it. The sheet matches on those two, so no company identifier key is needed (muse OS ships the same three keys).
-- **Without them,** setup falls back to a plain Bluetooth scan that connects the closest ring that answers, and iOS asks for Bluetooth permission the usual way. Remove all three, never one.
+- **The three `NSAccessorySetup…` keys** turn on AccessorySetupKit: the ring is set up through iOS's sheet, and there's no Bluetooth prompt. The service and name must match what the kit's sheet looks for (`0004`, `Museo`), or iOS refuses to show it. The sheet matches on those two, so no company identifier key is needed.
+- **Only museo rings are set up.** Firmware 10.14 and later advertise `Museo_47cf`. A ring on earlier firmware (`Muse_47cf`) never shows in the sheet, but one that was set up before keeps linking, so it can take the update.
+- **Without them,** setup falls back to a plain Bluetooth scan that connects the closest museo ring that answers, and iOS asks for Bluetooth permission the usual way. Remove all three, never one.
 - **`bluetooth-central`** lets recordings come in while the app is in the background, and lets iOS relaunch the app for the ring.
 - **`NSBluetoothAlwaysUsageDescription`** is the line iOS shows if it asks for Bluetooth (the plain-scan fallback). Keep it either way.
 

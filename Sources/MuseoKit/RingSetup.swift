@@ -16,7 +16,7 @@ import UIKit
 /// `disconnect()`, `forgetPreferredRing()`, `stopPickerScan()`).
 ///
 /// How a ring gets set up:
-/// 1. `showPicker()` opens the system sheet (service `0004`, name `Muse_`).
+/// 1. `showPicker()` opens the system sheet (service `0004`, a name with `Museo` in it).
 /// 2. iOS pairs the ring and sends `accessoryAdded`. The id is held until the sheet is gone,
 ///    so the link never races the system pair UI.
 /// 3. On `pickerDidDismiss`, the id goes to `ble.connect(ringID:)`. If CoreBluetooth can't
@@ -42,7 +42,10 @@ public final class RingSetup {
     /// What the picker matches. Both must also be in Info.plist
     /// (`NSAccessorySetupBluetoothServices`, `NSAccessorySetupBluetoothNames`) or iOS refuses.
     nonisolated static let ringService = "0004"
-    nonisolated static let ringNamePrefix = "Muse_"
+    /// What a ring's name must contain to be set up. Firmware 10.14 and later advertise
+    /// `Museo_47cf`. Earlier rings say `Muse_47cf` and can't be set up, but one that's
+    /// already set up keeps linking (iOS reconnects it by id), so it can take the update.
+    nonisolated static let ringNameMatch = "Museo"
     /// How long a handoff or "look for it" watches a scan for the ring before giving up.
     nonisolated static let lookWindow: TimeInterval = 20
 
@@ -87,8 +90,6 @@ public final class RingSetup {
     @ObservationIgnored private var accessories: [ASAccessory] = []
     /// Added while the sheet was up: handed to the ring manager when it's gone.
     @ObservationIgnored private var pendingAddedID: UUID?
-    /// After an empty picker, the next one matches service `0004` only.
-    @ObservationIgnored private var dropNameFilterNext = false
     /// The ring a scan should connect to when it shows up.
     @ObservationIgnored private var pendingConnectID: UUID?
     @ObservationIgnored private var lookTask: Task<Void, Never>?
@@ -170,8 +171,6 @@ public final class RingSetup {
         // One sheet at a time; a second ask would drop a ring added in the first.
         guard !isPickerInFlight else { return }
         activate()
-        let matchName = !dropNameFilterNext
-        dropNameFilterNext = false
         setupError = nil
         pickerFoundNothing = false
         pendingAddedID = nil
@@ -179,8 +178,8 @@ public final class RingSetup {
         stopLooking()
         expectingPicker = true
         if let ble, ble.state == .scanning { ble.stopPickerScan() }
-        log("picker", "uuid=\(Self.ringService) name=\(matchName ? Self.ringNamePrefix : "any") hid=true pairingLE=true")
-        presentPicker(matchName: matchName, retryOnBusy: true)
+        log("picker", "uuid=\(Self.ringService) name=\(Self.ringNameMatch) hid=true pairingLE=true")
+        presentPicker(retryOnBusy: true)
     }
 
     /// "look for it": a ring that's set up but away, slow, or disconnected by hand.
@@ -432,7 +431,7 @@ public final class RingSetup {
     }
 
     /// The sheet is gone (dismissed, cancelled or failed). Hands over a ring added during it,
-    /// or notes that nothing was set up so the next sheet drops the name filter.
+    /// or notes that nothing was set up.
     private func pickerClosed() {
         expectingPicker = false
         if let id = pendingAddedID {
@@ -442,7 +441,6 @@ public final class RingSetup {
         }
         if authorizedRingID == nil {
             pickerFoundNothing = true
-            dropNameFilterNext = true
         }
         reconcile()
     }
@@ -462,14 +460,14 @@ public final class RingSetup {
             ?? accessories.first { $0.bluetoothIdentifier != nil }
     }
 
-    private func presentPicker(matchName: Bool, retryOnBusy: Bool) {
+    private func presentPicker(retryOnBusy: Bool) {
         guard let session else { return }
-        let items = Self.pickerItems(matchName: matchName)
+        let items = Self.pickerItems()
         Task {
             do {
                 try await session.showPicker(for: items)
             } catch {
-                pickerFailed(error, matchName: matchName, retryOnBusy: retryOnBusy)
+                pickerFailed(error, retryOnBusy: retryOnBusy)
                 return
             }
             // Shown without an error. If the sheet never says it appeared, stop waiting for
@@ -482,7 +480,7 @@ public final class RingSetup {
         }
     }
 
-    private func pickerFailed(_ error: any Error, matchName: Bool, retryOnBusy: Bool) {
+    private func pickerFailed(_ error: any Error, retryOnBusy: Bool) {
         log("picker error", Self.describe(error))
         switch Self.code(of: error) {
         case .pickerRestricted where retryOnBusy:
@@ -490,7 +488,7 @@ public final class RingSetup {
             // Both clear within a beat.
             Task {
                 try? await Task.sleep(for: .milliseconds(400))
-                presentPicker(matchName: matchName, retryOnBusy: false)
+                presentPicker(retryOnBusy: false)
             }
         case .pickerAlreadyActive:
             // A sheet is already up. That one carries on.
@@ -510,13 +508,14 @@ public final class RingSetup {
         }
     }
 
-    private static func pickerItems(matchName: Bool) -> [ASPickerDisplayItem] {
+    private static func pickerItems() -> [ASPickerDisplayItem] {
         let descriptor = ASDiscoveryDescriptor()
         descriptor.bluetoothServiceUUID = CBUUID(string: ringService)
         // LE pairing plus HID (play and pause on a tap). Never `.confirmAuthorization` with
         // LE pairing, and never HID service 1812: iOS keeps it from apps.
         descriptor.supportedOptions = [.bluetoothPairingLE, .bluetoothHID]
-        if matchName { descriptor.bluetoothNameSubstring = ringNamePrefix }
+        // Always by name: only museo rings are set up, never the service alone.
+        descriptor.bluetoothNameSubstring = ringNameMatch
         // iOS shows another app's name and picture instead when that app set the ring up first.
         return [ASPickerDisplayItem(name: Museo.ringName, productImage: productImage, descriptor: descriptor)]
     }
@@ -641,7 +640,7 @@ public final class RingSetup {
 
     /// Once a ring answers, wait a beat for others nearby, then take the closest.
     private func pickClosestSoon() {
-        guard isSearching, pickTask == nil, let ble, !ble.discoveredRings.isEmpty else { return }
+        guard isSearching, pickTask == nil, !newRings.isEmpty else { return }
         pickTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
@@ -651,11 +650,16 @@ public final class RingSetup {
 
     private func pickClosest() {
         pickTask = nil
-        guard isSearching, let ble, let ring = ble.discoveredRings.max(by: { $0.rssi < $1.rssi }) else { return }
+        guard isSearching, let ble, let ring = newRings.max(by: { $0.rssi < $1.rssi }) else { return }
         isSearching = false
         log("plain pick", "\(ring.name) rssi=\(ring.rssi)")
         ble.connect(to: ring)
         watch(ring.id)
+    }
+
+    /// Rings a plain scan may set up: only those named museo.
+    private var newRings: [DiscoveredRing] {
+        ble?.discoveredRings.filter { $0.name.localizedCaseInsensitiveContains(Self.ringNameMatch) } ?? []
     }
 
     private func plainSearchEnded() {

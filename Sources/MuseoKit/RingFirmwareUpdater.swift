@@ -12,9 +12,9 @@ public enum BundledFirmware {
     static let zipName = "MuseRing"
     /// The build date of the bundled image (the manifest's `time`), yyyyMMdd. Update it
     /// when you drop in a new zip.
-    public static let stamp = "20260906"
+    public static let stamp = "20261014"
 
-    /// What the firmware is called: month and day of the stamp, "9.06".
+    /// What the firmware is called: month and day of the stamp, "10.14".
     public static var version: String {
         let digits = Array(stamp)
         guard digits.count == 8, let month = Int(String(digits[4...5])) else { return stamp }
