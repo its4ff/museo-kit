@@ -138,6 +138,7 @@ public final class RingModel {
         var next = RingStatus(link: link)
         next.usesAccessorySetup = RingSetup.isEnabled
         next.isFirmwareUpdating = ble.isFirmwareUpdateInProgress
+        next.firmwareVersion = ble.firmwareVersion
         next.autoSync = ble.autoSyncOfflineRecordings
         next.autoClear = ble.autoClearRingStorage
         next.isSettingUp = setup.isPickerInFlight || setup.isSearching

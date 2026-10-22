@@ -8,11 +8,30 @@ import MuseoCore
 
 /// The MCUboot zip for the 54L15 ring, bundled in this package. To ship new firmware, replace
 /// `Resources/MuseRing.zip` (manifest.json + signed image), set `stamp`, and tag a new version.
-public enum BundledFirmware {
+public nonisolated enum BundledFirmware {
     static let zipName = "MuseRing"
     /// The build date of the bundled image (the manifest's `time`), yyyyMMdd. Update it
     /// when you drop in a new zip.
     public static let stamp = "20261014"
+
+    /// What the bundled image reports once it runs (Treaty `0x0B`): its MCUboot version,
+    /// major and minor (`manifest.json`'s `version_MCUBOOT`, 1.64.0+0). Update it with the zip.
+    public static let imageVersion = "1.64"
+
+    /// Whether a ring that reports `ringVersion` runs older firmware than the bundled image.
+    /// Compares number by number, so "1.9" is older than "1.64". Unknown is never older.
+    public static func isNewer(than ringVersion: String?) -> Bool {
+        guard let ringVersion else { return false }
+        let ring = numbers(ringVersion), bundled = numbers(imageVersion)
+        guard !ring.isEmpty, !bundled.isEmpty else { return false }
+        return ring.lexicographicallyPrecedes(bundled)
+    }
+
+    private static func numbers(_ version: String) -> [Int] {
+        let parts = version.split(separator: ".").map { Int($0) }
+        guard parts.allSatisfy({ $0 != nil }) else { return [] }
+        return parts.compactMap { $0 }
+    }
 
     /// What the firmware is called: month and day of the stamp, "10.14".
     public static var version: String {

@@ -94,6 +94,9 @@ Also `disconnect`, `remove`, `rename`, `setAutoSync(_:)` and `setAutoClear(_:)`.
 ```swift
 Museo.firmware.start()     // phase: .preparing, .sending(progress:), .confirming, .resetting, .success, .failed
 BundledFirmware.version    // "10.14"
+BundledFirmware.imageVersion   // "1.64": what the ring reports once it runs this image
+ring.status.firmwareVersion    // what the ring reports now, like "1.62"
+ring.status.firmwareIsBehind   // the ring runs older firmware than the bundled image
 ```
 
 **Setup** runs on its own through `RingActions`. `RingSetup.isEnabled` says whether the app's Info.plist turns AccessorySetupKit on, and `RingSetup.shared.logText` holds the last 50 setup events for a console.
@@ -163,7 +166,7 @@ Files the kit keeps on the phone:
 
 Semantic versioning, with every change in `CHANGELOG.md`:
 - **major** when public API is removed or changes meaning
-- **minor** for new API, or a new bundled firmware image (replace the zip, set `BundledFirmware.stamp` to the manifest's `time` as yyyyMMdd)
+- **minor** for new API, or a new bundled firmware image (replace the zip, set `BundledFirmware.stamp` to the manifest's `time` as yyyyMMdd, and `BundledFirmware.imageVersion` to its MCUboot major and minor)
 - **patch** for fixes that change no API
 
 Tags are plain versions (`0.1.0`). While the kit is below 1.0, pin an exact version: any 0.x release can change the API.

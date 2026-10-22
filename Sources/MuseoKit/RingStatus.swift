@@ -64,6 +64,8 @@ public nonisolated struct RingStatus: Equatable, Sendable {
     /// AccessorySetupKit is on (Info.plist declares it). Off, setup is a plain bluetooth scan.
     public var usesAccessorySetup = true
     public var isFirmwareUpdating = false
+    /// The firmware the ring says it runs, like "1.64". Nil until it has answered once.
+    public var firmwareVersion: String?
 
     // Beyond the spec, all optional for views:
 
@@ -89,6 +91,12 @@ public nonisolated struct RingStatus: Equatable, Sendable {
     // MARK: Derived
 
     public var isLinked: Bool { link == .linked }
+
+    /// The ring runs older firmware than the image in this kit (`BundledFirmware`), and no
+    /// update is running. Unknown versions never count.
+    public var firmwareIsBehind: Bool {
+        link != .notSetUp && !isFirmwareUpdating && BundledFirmware.isNewer(than: firmwareVersion)
+    }
 
     /// Something only the person can fix: bluetooth, or a ring that's nearly full.
     public var needsAttention: Bool {
@@ -170,6 +178,7 @@ public nonisolated struct RingStatus: Equatable, Sendable {
             parts.append(waiting == 1 ? "1 recording waiting" : "\(waiting) recordings waiting")
         }
         if needsAttention, link == .linked { parts.append("nearly full") }
+        if firmwareIsBehind { parts.append("firmware update ready") }
         return parts.joined(separator: ", ")
     }
 
@@ -252,7 +261,15 @@ public nonisolated extension RingStatus {
         status.battery = 80
         status.batteryReadAt = recently
         status.freeStoragePercent = 86
+        status.firmwareVersion = BundledFirmware.imageVersion
         status.canRename = true
+        return status
+    }()
+
+    /// Linked, on firmware older than the bundled image.
+    static let updateReady: RingStatus = {
+        var status = linked
+        status.firmwareVersion = "1.62"
         return status
     }()
 
@@ -323,6 +340,7 @@ public nonisolated extension RingStatus {
         ("live", .live),
         ("syncing", .syncing),
         ("nearlyFull", .nearlyFull),
+        ("updateReady", .updateReady),
         ("away", .away),
         ("bluetoothOff", .bluetoothOff),
     ]

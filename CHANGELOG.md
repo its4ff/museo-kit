@@ -1,5 +1,16 @@
 # museo kit changelog
 
+## 0.3.0
+
+**The kit reads the ring's firmware version**
+- On every connect the kit asks the ring which firmware it runs (Treaty `0x0B`, answered by `0x0C`, two bytes, major then minor), as muse 54 does. `RingBLEManager.firmwareVersion` holds it, like "1.64", kept while the ring is away and cleared when it's forgotten. Logs `[muse][ble] ring runs firmware 1.64`.
+- `RingStatus.firmwareVersion` carries it to screens.
+- `BundledFirmware.imageVersion` is what the bundled image reports once it runs: "1.64" (its MCUboot `1.64.0+0`). Update it with the zip, next to `stamp`.
+- `BundledFirmware.isNewer(than:)` compares number by number ("1.9" is older than "1.64"). Unknown is never older.
+- `RingStatus.firmwareIsBehind`: the ring runs older firmware than the bundled image, and no update is running. It joins `accessibilityLabel` as "firmware update ready".
+- New fixture `RingStatus.updateReady` (linked, on 1.62). `.linked` now reports the bundled version.
+- Not yet: the updater still sends the image to a ring that already runs it, or a newer one (`proposals/KIT-1.2.md`, item 2).
+
 ## 0.2.3
 
 **Fix: firmware updates sent several times slower than muse OS**

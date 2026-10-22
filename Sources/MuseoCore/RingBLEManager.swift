@@ -245,6 +245,11 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
     /// `0x1E`). Nil until it answers. For tools like a console: in testing (2026-10-14) neither
     /// value changed a recording, so the kit keeps noise reduction at 0 and leaves AGC alone.
     @Published public private(set) var recordingSound: RingRecordingSound?
+    /// The firmware the ring says it runs, "major.minor" like "1.64" (Treaty `0x0B`, answered
+    /// by `0x0C`, as muse 54 reads it). Asked once per connection, so it's fresh after an
+    /// update restarts the ring. Kept while the ring is away; nil until it answers, and
+    /// again once the ring is forgotten.
+    @Published public private(set) var firmwareVersion: String?
     private var userRequestedDisconnect = false
     private var firmwareDisconnectContinuations: [CheckedContinuation<Void, Never>] = []
     private var scanFallbackWorkItem: DispatchWorkItem?
@@ -655,6 +660,7 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
         }
         UserDefaults.standard.removeObject(forKey: Self.preferredKey)
         preferredPeripheralID = nil
+        firmwareVersion = nil
         if hasActiveLink {
             disconnect()
         } else if let peripheral {
@@ -832,6 +838,23 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
 
     public func requestSystemState() {
         send(.getSystemState)
+    }
+
+    // MARK: - Firmware version (Treaty 0x0B / 0x0C)
+
+    /// Asks the ring which firmware it runs. It answers with `0x0C`.
+    public func requestFirmwareVersion() {
+        guard isProtocolReady else { return }
+        send(.getVersion)
+    }
+
+    /// `0x0C`: two bytes, major then minor ("1.64").
+    private func handleFirmwareVersion(_ payload: Data) {
+        let bytes = [UInt8](payload)
+        guard bytes.count >= 2 else { return }
+        let version = "\(bytes[0]).\(bytes[1])"
+        print("[muse][ble] ring runs firmware \(version)")
+        if firmwareVersion != version { firmwareVersion = version }
     }
 
     // MARK: - Capture delivery
@@ -1107,6 +1130,8 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
             handleSystemState(frame.payload)
         case .bindCheckAck:
             handleBindCheckAck(frame.payload)
+        case .sendVersion:
+            handleFirmwareVersion(frame.payload)
         case .getRecordBitrate:
             if !frame.payload.isEmpty {
                 handleRecordBitratePayload(frame.payload)
@@ -1507,6 +1532,7 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
             triggerPairingIfNeeded()
             setCurrentTime()
             requestSystemState()
+            requestFirmwareVersion()
             applyRecordingBitrateToDevice()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
                 self?.requestRecordingBitrate()
