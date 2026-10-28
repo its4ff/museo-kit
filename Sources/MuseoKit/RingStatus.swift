@@ -32,7 +32,7 @@ public nonisolated struct RingStatus: Equatable, Sendable {
     /// What the ring advertises, like "Museo_47cf". Nil until it has linked once.
     public var advertisedName: String?
 
-    /// 0 to 100 in steps of 5. Nil until the ring has answered once.
+    /// 0 to 100, as the ring reports it. Nil until the ring has answered once.
     public var battery: Int?
     public var isCharging = false
     /// The level is the last one read (cached, or the ring is away), not a live one.
@@ -220,7 +220,7 @@ public nonisolated struct RingStatus: Equatable, Sendable {
 
     // MARK: Helpers
 
-    /// Rounds a battery reading to the icon's 5% steps.
+    /// Rounds a battery reading to 5% steps, for an icon that draws in steps. Status keeps the exact reading.
     public static func quantized(battery: Int?) -> Int? {
         guard let battery else { return nil }
         let clamped = min(max(battery, 0), 100)

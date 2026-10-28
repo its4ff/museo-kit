@@ -1,5 +1,11 @@
 # museo kit changelog
 
+## 0.3.1
+
+**The battery percent is the ring's own reading**
+- `RingStatus.battery` was rounded to 5% steps, so a ring at 87% read 85%. It now carries the ring's exact percent (clamped to 0-100), as muse OS and muse 54 show it.
+- `RingStatus.quantized(battery:)` stays for icons that draw in steps; nothing in the kit calls it now.
+
 ## 0.3.0
 
 **The kit reads the ring's firmware version**

@@ -157,7 +157,7 @@ public final class RingModel {
         next.userDisconnected = setup.userDisconnected && link != .linked
         next.canRename = setup.canRename
 
-        next.battery = RingStatus.quantized(battery: ble.batteryPercent)
+        next.battery = ble.batteryPercent.map { min(max($0, 0), 100) }
         next.isCharging = ble.batteryIsCharging
         next.batteryIsStale = ble.isBatteryEstimate || link != .linked
         next.batteryReadAt = ble.batteryReadAt
