@@ -1,5 +1,11 @@
 # museo kit changelog
 
+## 0.3.2
+
+**Firmware 10.26** (`museo_20261026`)
+- `Resources/MuseRing.zip` is the 10.26 image: MCUboot version 1.67.0+0, 435,236 bytes, the same `manifest.json` plus signed, encrypted image as before.
+- `BundledFirmware.stamp` is `20261026`, so `BundledFirmware.version` says "10.26". `BundledFirmware.imageVersion` is "1.67", so a ring on 1.64 shows `firmwareIsBehind` until it takes the update.
+
 ## 0.3.1
 
 **The battery percent is the ring's own reading**

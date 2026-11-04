@@ -93,8 +93,8 @@ Also `disconnect`, `remove`, `rename`, `setAutoSync(_:)` and `setAutoClear(_:)`.
 
 ```swift
 Museo.firmware.start()     // phase: .preparing, .sending(progress:), .confirming, .resetting, .success, .failed
-BundledFirmware.version    // "10.14"
-BundledFirmware.imageVersion   // "1.64": what the ring reports once it runs this image
+BundledFirmware.version    // "10.26"
+BundledFirmware.imageVersion   // "1.67": what the ring reports once it runs this image
 ring.status.firmwareVersion    // what the ring reports now, like "1.62"
 ring.status.firmwareIsBehind   // the ring runs older firmware than the bundled image
 ```

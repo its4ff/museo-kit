@@ -12,11 +12,11 @@ public nonisolated enum BundledFirmware {
     static let zipName = "MuseRing"
     /// The build date of the bundled image (the manifest's `time`), yyyyMMdd. Update it
     /// when you drop in a new zip.
-    public static let stamp = "20261014"
+    public static let stamp = "20261026"
 
     /// What the bundled image reports once it runs (Treaty `0x0B`): its MCUboot version,
-    /// major and minor (`manifest.json`'s `version_MCUBOOT`, 1.64.0+0). Update it with the zip.
-    public static let imageVersion = "1.64"
+    /// major and minor (`manifest.json`'s `version_MCUBOOT`, 1.67.0+0). Update it with the zip.
+    public static let imageVersion = "1.67"
 
     /// Whether a ring that reports `ringVersion` runs older firmware than the bundled image.
     /// Compares number by number, so "1.9" is older than "1.64". Unknown is never older.
@@ -33,7 +33,7 @@ public nonisolated enum BundledFirmware {
         return parts.compactMap { $0 }
     }
 
-    /// What the firmware is called: month and day of the stamp, "10.14".
+    /// What the firmware is called: month and day of the stamp, "10.26".
     public static var version: String {
         let digits = Array(stamp)
         guard digits.count == 8, let month = Int(String(digits[4...5])) else { return stamp }
