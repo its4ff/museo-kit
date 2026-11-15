@@ -1,4 +1,6 @@
+#if ACCESSORY_SETUP
 import AccessorySetupKit
+#endif
 import Combine
 // CBUUID only, to build the AccessorySetupKit descriptor (ASDiscoveryDescriptor.bluetoothServiceUUID
 // is a CBUUID). Never CBCentralManager, GATT, Treaty or raw BLE here: RingBLEManager owns all of that.
@@ -6,7 +8,11 @@ import CoreBluetooth
 import Foundation
 import MuseoCore
 import Observation
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Sets the ring up with iOS's own accessory sheet (AccessorySetupKit), and keeps what iOS
 /// says this app may use in step with `RingBLEManager`.
@@ -37,7 +43,14 @@ public final class RingSetup {
     public static let shared = RingSetup()
 
     /// The Info.plist declares AccessorySetupKit (`NSAccessorySetupKitSupports` has `Bluetooth`).
-    nonisolated public static var isEnabled: Bool { declaresAccessorySetup }
+    /// Always false on a Mac: AccessorySetupKit is iOS only, so a Mac sets up with a plain scan.
+    nonisolated public static var isEnabled: Bool {
+        #if ACCESSORY_SETUP
+        declaresAccessorySetup
+        #else
+        false
+        #endif
+    }
 
     /// What the picker matches. Both must also be in Info.plist
     /// (`NSAccessorySetupBluetoothServices`, `NSAccessorySetupBluetoothNames`) or iOS refuses.
@@ -79,14 +92,22 @@ public final class RingSetup {
     public var isPickerInFlight: Bool { isPickerVisible || expectingPicker }
 
     /// iOS can rename the ring: it was set up through AccessorySetupKit by this app.
-    public var canRename: Bool { Self.isEnabled && authorizedAccessory != nil && !renameUnsupported }
+    public var canRename: Bool {
+        #if ACCESSORY_SETUP
+        Self.isEnabled && authorizedAccessory != nil && !renameUnsupported
+        #else
+        false
+        #endif
+    }
 
     /// The event log as one block of text, for copying.
     public var logText: String { events.joined(separator: "\n") }
 
     @ObservationIgnored private weak var ble: RingBLEManager?
+    #if ACCESSORY_SETUP
     @ObservationIgnored private var session: ASAccessorySession?
     @ObservationIgnored private var accessories: [ASAccessory] = []
+    #endif
     /// Added while the sheet was up: handed to the ring manager when it's gone.
     @ObservationIgnored private var pendingAddedID: UUID?
     /// The ring a scan should connect to when it shows up.
@@ -133,7 +154,12 @@ public final class RingSetup {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.ringsChanged() }
             .store(in: &subscriptions)
-        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+        #if canImport(UIKit)
+        let didBecomeActive = UIApplication.didBecomeActiveNotification
+        #else
+        let didBecomeActive = NSApplication.didBecomeActiveNotification
+        #endif
+        NotificationCenter.default.publisher(for: didBecomeActive)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.becameActive() }
             .store(in: &subscriptions)
@@ -156,6 +182,7 @@ public final class RingSetup {
             startPlainSetup()
             return
         }
+        #if ACCESSORY_SETUP
         // Until AccessorySetupKit answers, "not set up" and "set up" look alike. Wait for
         // it; `.activated` carries on from here. (Not `lookForRing()`: with the session
         // down it waits too, and the two must never call each other.)
@@ -179,6 +206,7 @@ public final class RingSetup {
         if let ble, ble.state == .scanning { ble.stopPickerScan() }
         log("picker", "uuid=\(Self.ringService) name=\(Self.ringNameMatch) hid=true pairingLE=true")
         presentPicker(retryOnBusy: true)
+        #endif
     }
 
     /// "look for it": a ring that's set up but away, slow, or disconnected by hand.
@@ -227,6 +255,7 @@ public final class RingSetup {
             ble?.forgetPreferredRing()
             return
         }
+        #if ACCESSORY_SETUP
         // Forgetting it here alone would leave it authorized in iOS, and the next
         // `.activated` would hand it straight back. Remove it for real once the session's up.
         guard isReady, let session else {
@@ -251,11 +280,13 @@ public final class RingSetup {
                 setupError = "couldn't remove the ring · \(error.localizedDescription.kitQuiet)"
             }
         }
+        #endif
     }
 
     /// iOS's rename sheet. The new name shows in Settings › Bluetooth and here.
     func rename() {
         guard Self.isEnabled else { return }
+        #if ACCESSORY_SETUP
         guard isReady, let session else {
             waitForSession(.rename)
             return
@@ -275,6 +306,7 @@ public final class RingSetup {
                 setupError = "this ring can't be renamed here"
             }
         }
+        #endif
     }
 
     /// The one place that keeps AccessorySetupKit and the ring manager agreeing. Runs when
@@ -302,16 +334,19 @@ public final class RingSetup {
     /// Back in the app. If iOS invalidated the AccessorySetupKit session while we were away,
     /// start a new one (its `.activated` reconciles); otherwise reconcile now.
     private func becameActive() {
+        #if ACCESSORY_SETUP
         if Self.isEnabled, session == nil, ble != nil {
             activate()
-        } else {
-            reconcile()
+            return
         }
+        #endif
+        reconcile()
     }
 
     // MARK: - AccessorySetupKit
 
     private func activate() {
+        #if ACCESSORY_SETUP
         guard Self.isEnabled, session == nil else { return }
         let session = ASAccessorySession()
         self.session = session
@@ -320,6 +355,7 @@ public final class RingSetup {
         session.activate(on: .main) { [weak self] event in
             self?.handle(event)
         }
+        #endif
     }
 
     /// AccessorySetupKit is down or still activating: start it if needed and run `action`
@@ -353,6 +389,7 @@ public final class RingSetup {
         }
     }
 
+    #if ACCESSORY_SETUP
     private func handle(_ event: ASAccessoryEvent) {
         var detail = "accessories=\(session?.accessories.count ?? 0)"
         if let accessory = event.accessory {
@@ -428,6 +465,7 @@ public final class RingSetup {
             break
         }
     }
+    #endif
 
     /// The sheet is gone (dismissed, cancelled or failed). Hands over a ring added during it,
     /// or notes that nothing was set up.
@@ -444,6 +482,7 @@ public final class RingSetup {
         reconcile()
     }
 
+    #if ACCESSORY_SETUP
     private func refreshAccessories() {
         accessories = session?.accessories ?? []
         let accessory = authorizedAccessory
@@ -524,6 +563,7 @@ public final class RingSetup {
         let config = UIImage.SymbolConfiguration(pointSize: 96, weight: .ultraLight)
         return UIImage(systemName: "circle.circle", withConfiguration: config) ?? UIImage()
     }
+    #endif
 
     // MARK: - Handing the ring to RingBLEManager
 
@@ -694,6 +734,7 @@ public final class RingSetup {
         String(id.uuidString.prefix(8))
     }
 
+    #if ACCESSORY_SETUP
     private static func code(of error: any Error) -> ASError.Code? {
         let error = error as NSError
         guard error.domain == ASError.errorDomain else { return nil }
@@ -750,4 +791,5 @@ public final class RingSetup {
         @unknown default: "other"
         }
     }
+    #endif
 }

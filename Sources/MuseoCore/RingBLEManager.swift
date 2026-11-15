@@ -715,6 +715,12 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
     /// missed on a locked phone. If none produce a bond, iOS likely holds a
     /// dead record. Forget the ring and pair again.
     private func triggerPairingIfNeeded() {
+        // A Mac never asks. The bond only carries play and pause, which a Mac doesn't need;
+        // streaming and sync work without it. Asking there interrupted transfers, and if the
+        // ring keeps one bond, a Mac's would cost the iphone its own.
+        #if os(macOS)
+        return
+        #else
         guard !isBondConfirmed, !needsHardRepair, bondAsksThisConnection < 3 else { return }
         guard let ringID = connectedRingID?.uuidString ?? preferredPeripheralID?.uuidString else { return }
         // A prior mark with no contradiction yet: wait for the bindCheckAck
@@ -739,6 +745,7 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
                 self.logBond("ring still not bound after 3 asks, forget and pair again")
             }
         }
+        #endif
     }
 
     private func handleBindCheckAck(_ payload: Data) {

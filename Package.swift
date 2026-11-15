@@ -13,7 +13,7 @@ import PackageDescription
 
 let package = Package(
     name: "MuseoKit",
-    platforms: [.iOS("26.0")],
+    platforms: [.iOS("26.0"), .macOS("26.0")],
     products: [
         .library(name: "MuseoKit", targets: ["MuseoKit"]),
     ],
@@ -51,6 +51,8 @@ let package = Package(
                 .enableUpcomingFeature("GlobalActorIsolatedTypesUsability"),
                 .enableUpcomingFeature("DisableOutwardActorInference"),
                 .enableUpcomingFeature("MemberImportVisibility"),
+                // AccessorySetupKit is iOS only (not macOS, not Catalyst). Elsewhere setup is plain bluetooth.
+                .define("ACCESSORY_SETUP", .when(platforms: [.iOS])),
             ]
         ),
     ]
