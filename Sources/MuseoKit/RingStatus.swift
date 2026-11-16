@@ -52,6 +52,16 @@ public nonisolated struct RingStatus: Equatable, Sendable {
     public var syncProgress: Double?
     /// Recordings still on the ring that this app hasn't brought in.
     public var waiting = 0
+    /// Recordings from before this device's line (`bringsInOnlyNewRecordings`), not here
+    /// and not counted in `waiting`. Zero when the option is off.
+    public var olderWaiting = 0
+    /// The size of everything on the ring not here, older included, in bytes.
+    public var waitingBytes = 0
+    /// While syncing: how many this sync set out to bring in, and the bytes still to come.
+    public var syncTotal = 0
+    public var syncBytesLeft = 0
+    /// How fast the last recording came over, in bytes a second. Nil until one has.
+    public var transferRate: Double?
     /// The ring's free storage, 0 to 100, from its last answer (kept while it's away).
     public var freeStoragePercent: Int?
     /// Bring recordings in on their own when the ring links or stops recording.

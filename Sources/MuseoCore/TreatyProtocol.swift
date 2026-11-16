@@ -28,6 +28,9 @@ enum TreatyCommand: UInt8 {
     case setRecord = 0x17
     case setPowerOff = 0x18
     case touchStartSecurity = 0x19
+    /// Delete one recording, by record and segment number (`RingBLEManager.deleteRingFile`).
+    /// The ring answers on 0xE0: 0 done, 2 busy, 4 not found, 15 couldn't delete.
+    case deleteFile = 0x1B
     /// Query current Opus recording bitrate (payload response: 0=16, 1=20, 2=24 kbps).
     case getRecordBitrate = 0x1C
     /// Set Opus recording bitrate (payload: 0=16, 1=20, 2=24 kbps). Frame duration stays 10 ms.

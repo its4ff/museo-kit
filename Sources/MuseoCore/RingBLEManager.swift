@@ -83,6 +83,7 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
     private static let preferredKey = "preferredMuseBuildPeripheralID"
     private static let centralRestoreIdentifier = "com.4ff.muse-build.bluetooth-central"
     static let syncedOfflineKeysDefault = "muse.offline.syncedKeys"
+    static let baselineKeysDefault = "muse.offline.baselineKeys"
     static let autoSyncOfflineDefault = "muse.offline.autoSync"
     static let autoClearRingDefault = "muse.offline.autoClearRing"
     private static let batteryCacheKey = "muse.battery.lastReading"
@@ -149,6 +150,19 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
             UserDefaults.standard.set(autoSyncOfflineRecordings, forKey: Self.autoSyncOfflineDefault)
         }
     }
+    /// Bring the newest recording in first. Off: the ring's own order, oldest first. On, a
+    /// recording you just made lands in seconds instead of waiting behind hours of older
+    /// ones (a Mac typing a fresh recording where you are needs this).
+    public var syncsNewestFirst = false
+    /// Bring in only recordings made after this device first listed the ring.
+    ///
+    /// Recordings stay on the ring after a sync (Treaty has no per-file delete), and each
+    /// device keeps its own record of what it has. A second device, like a Mac beside the
+    /// iphone, would otherwise see every recording the iphone already has as new, and work
+    /// through hours of them at the Mac's slow transfer speed. With this on, the first file
+    /// list becomes the line: what's on the ring then stays there (`bringInEverything()`
+    /// fetches it when asked, once), and everything after comes in.
+    public var bringsInOnlyNewRecordings = false
     /// Treaty has no per-file delete, so reclaiming space means formatting the
     /// whole flash — only ever done automatically after a fully clean sync.
     @Published public var autoClearRingStorage = true {
@@ -282,9 +296,29 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
     var offlineQueue: [RingFile] = []
     var activeOfflineKey: String?
     var expectedRingFileCount = 0
+    /// Which list entries arrived, by their place in the list. Two entries can carry the
+    /// same file name and merge into one `RingFile`, so `ringFiles.count` can stay under
+    /// `expectedRingFileCount` with the whole list in.
+    var listedEntries: Set<UInt16> = []
+    /// The next sync takes the recordings from before the line too (`bringInEverything`).
+    var includesOlderOnce = false
+    /// How many recordings the sync in flight set out to bring in.
+    @Published public internal(set) var offlineQueueTotal = 0
+    /// The last whole recording's transfer speed, in bytes a second.
+    public internal(set) var lastTransferRate: Double?
+    /// A delete sent to the ring, waiting for its answer (`deleteRingFile`).
+    var pendingDeletion: PendingDeletion?
+    /// Every listed entry's `syncKey`, merged names included.
+    var listedEntryKeys: Set<String> = []
+    /// More waits a file list may take when the ring holds files but no entry came yet.
+    var fileListPatience = 0
     var pendingOfflineSync = false
     var awaitingTransferEndStatus = false
     var syncedOfflineKeys: Set<String> = []
+    /// The recordings that were on the ring when this device first listed it, for
+    /// `bringsInOnlyNewRecordings`. Nil until that first list; empty once older ones are
+    /// asked for.
+    var baselineKeys: Set<String>?
     /// Recordings that failed to decode this session — skipped so they can't
     /// block the queue, but deliberately not persisted as synced.
     var undecodableOfflineKeys: Set<String> = []
@@ -300,6 +334,7 @@ public final class RingBLEManager: NSObject, ObservableObject, CBCentralManagerD
         super.init()
         preferredPeripheralID = UserDefaults.standard.string(forKey: Self.preferredKey).flatMap(UUID.init(uuidString:))
         syncedOfflineKeys = Set(UserDefaults.standard.stringArray(forKey: Self.syncedOfflineKeysDefault) ?? [])
+        baselineKeys = UserDefaults.standard.stringArray(forKey: Self.baselineKeysDefault).map(Set.init)
         if UserDefaults.standard.object(forKey: Self.autoSyncOfflineDefault) != nil {
             autoSyncOfflineRecordings = UserDefaults.standard.bool(forKey: Self.autoSyncOfflineDefault)
         }

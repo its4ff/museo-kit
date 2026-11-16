@@ -26,6 +26,11 @@ extension RingBLEManager {
         guard !isSyncingOffline, !isListingRingFiles else { return }
         ringFiles.removeAll()
         expectedRingFileCount = 0
+        listedEntries.removeAll()
+        listedEntryKeys.removeAll()
+        // Two waits and two asks for a list that doesn't start (about 26 s in all), more
+        // waits for one that stops partway.
+        fileListPatience = 4
         isListingRingFiles = true
         offlineSyncError = nil
         send(.getFileList)
@@ -44,8 +49,11 @@ extension RingBLEManager {
             offlineSyncError = ringIsRecordingOffline ? "ring is still recording" : "busy capturing"
             return
         }
-        guard !isSyncingOffline, !isListingRingFiles, !isDecodingOffline else { return }
+        guard !isSyncingOffline, !isDecodingOffline else { return }
         pendingOfflineSync = true
+        // A list already on its way: the sync starts when it's in, instead of the ask being
+        // dropped (a tap on "bring them in" right after linking used to do nothing).
+        guard !isListingRingFiles else { return }
         requestRingFileList()
     }
 
@@ -76,15 +84,98 @@ extension RingBLEManager {
     /// so recordings already on the phone sit on flash until storage is cleared.
     public var offlineMuseCount: Int {
         if !ringFiles.isEmpty { return unsyncedRingFiles.count }
+        // Bringing in only new recordings, the raw count is mostly recordings this device
+        // leaves on the ring on purpose: say nothing until a list says what's new.
+        if bringsInOnlyNewRecordings { return 0 }
         return Int(ringSystemState?.fileCount ?? 0)
     }
 
     public var unsyncedRingFiles: [RingFile] {
-        ringFiles.filter {
+        // Before the first whole list draws the line, nothing counts as new.
+        if bringsInOnlyNewRecordings, baselineKeys == nil { return [] }
+        let before = bringsInOnlyNewRecordings ? (baselineKeys ?? []) : []
+        return ringFiles.filter {
             $0.size > 0
                 && !syncedOfflineKeys.contains($0.syncKey)
                 && !undecodableOfflineKeys.contains($0.syncKey)
+                && !before.contains($0.syncKey)
         }
+    }
+
+    /// The recordings left on the ring by `bringsInOnlyNewRecordings` (made before this
+    /// device first listed it) and not here yet.
+    public var olderRingFiles: [RingFile] {
+        guard bringsInOnlyNewRecordings, let baselineKeys else { return [] }
+        return ringFiles.filter {
+            $0.size > 0 && baselineKeys.contains($0.syncKey) && !syncedOfflineKeys.contains($0.syncKey)
+        }
+    }
+
+    /// Everything on the ring that isn't on this device yet: the new recordings and, this
+    /// once, the ones from before the line `bringsInOnlyNewRecordings` drew. The line stays,
+    /// so later syncs still bring in only new ones. Joins a sync already running.
+    public func bringInEverything() {
+        if isSyncingOffline {
+            let queued = Set(offlineQueue.map(\.syncKey))
+            let more = olderRingFiles.filter { !queued.contains($0.syncKey) && $0.fileName != activeOfflineKey }
+            guard !more.isEmpty else { return }
+            offlineQueue.append(contentsOf: syncsNewestFirst ? more.reversed() : more)
+            offlineQueueTotal += more.count
+            offlineQueueRemaining = offlineQueue.count + 1
+            print("[muse][offline] adding \(more.count) earlier recording(s) to this sync")
+            return
+        }
+        includesOlderOnce = true
+        print("[muse][offline] bringing in everything on the ring")
+        syncOfflineRecordings()
+    }
+
+    /// Lets the recording coming in now finish, then stops: the rest stay on the ring for
+    /// another time. (Cutting a transfer off midway would leave the ring sending.)
+    public func stopAfterCurrentRecording() {
+        guard isSyncingOffline else { return }
+        includesOlderOnce = false
+        offlineQueue.removeAll()
+        offlineQueueTotal = max(0, offlineQueueTotal - (offlineQueueRemaining - 1))
+        offlineQueueRemaining = activeOfflineFileName == nil ? 0 : 1
+        print("[muse][offline] stopping after this recording")
+    }
+
+    /// Bytes on the ring this device hasn't brought in, older ones included: for a time
+    /// estimate before a sync.
+    public var notHereBytes: Int {
+        (unsyncedRingFiles + olderRingFiles).reduce(0) { $0 + Int($1.size) }
+    }
+
+    /// Bytes still to come in the sync in flight.
+    public var offlineBytesLeft: Int {
+        let queued = offlineQueue.reduce(0) { $0 + Int($1.size) }
+        guard let key = activeOfflineKey, let download = offlineDownloads[key] else { return queued }
+        return queued + max(0, download.expectedSize - download.received.count)
+    }
+
+    /// Every entry the ring said it would send has come.
+    public var hasWholeFileList: Bool {
+        expectedRingFileCount > 0 && listedEntries.count >= expectedRingFileCount
+    }
+
+    /// How many entries the last list said the ring holds.
+    public var listedFileCount: Int { expectedRingFileCount }
+
+    /// The first file list on this device draws the line for `bringsInOnlyNewRecordings`.
+    private func takeBaselineIfNeeded() {
+        guard bringsInOnlyNewRecordings, baselineKeys == nil, !ringFiles.isEmpty else { return }
+        // Only a whole list: a line drawn through half of one would let the rest in as new.
+        guard hasWholeFileList else {
+            print("[muse][offline] file list incomplete (\(listedEntries.count) of \(expectedRingFileCount)): no line drawn yet")
+            return
+        }
+        // Every entry's key, not only the merged files': when two entries share a name,
+        // either may be the one `ringFiles` keeps next time, and both are from before.
+        let keys = listedEntryKeys.subtracting(syncedOfflineKeys)
+        baselineKeys = keys
+        UserDefaults.standard.set(Array(keys), forKey: Self.baselineKeysDefault)
+        print("[muse][offline] leaving \(keys.count) earlier recording(s) on the ring; new ones come in")
     }
 
     /// Wipes the ring's flash. Treaty has no per-file delete, so this is the only
@@ -98,6 +189,8 @@ extension RingBLEManager {
         send(.format)
         ringFiles.removeAll()
         expectedRingFileCount = 0
+        listedEntries.removeAll()
+        listedEntryKeys.removeAll()
         print("[muse][offline] clearing ring storage (0x10)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             self?.requestSystemState()
@@ -164,7 +257,9 @@ extension RingBLEManager {
             handleFileData(frame.payload)
             return true
         case .errorState:
-            return handleOfflineError(frame.payload.first ?? 0xFF)
+            let code = frame.payload.first ?? 0xFF
+            if handleDeletionReply(code) { return true }
+            return handleOfflineError(code)
         default:
             return false
         }
@@ -173,6 +268,8 @@ extension RingBLEManager {
     private func handleFileListEntry(_ payload: Data) {
         guard let file = RingFile.parse(payload) else { return }
         expectedRingFileCount = Int(file.totalEntries)
+        listedEntries.insert(file.entryIndex)
+        listedEntryKeys.insert(file.syncKey)
 
         if let index = ringFiles.firstIndex(where: { $0.id == file.id }) {
             ringFiles[index] = file
@@ -184,7 +281,7 @@ extension RingBLEManager {
             }
         }
 
-        let haveAll = expectedRingFileCount > 0 && ringFiles.count >= expectedRingFileCount
+        let haveAll = hasWholeFileList
         scheduleFileListCompletion(after: haveAll ? 0.2 : 1.2)
     }
 
@@ -198,8 +295,41 @@ extension RingBLEManager {
     private func finishFileList() {
         fileListTimer?.invalidate()
         fileListTimer = nil
+        // The ring says it holds files, but no entry has come yet: on its slow link the
+        // first one can take longer than the first wait (a Mac often sees 5 s and more).
+        // Concluding "nothing new" here would drop the sync, and the list that arrives a
+        // moment later would find nobody waiting for it.
+        // Also when the ring's count isn't known yet: an empty list is only believed once the
+        // ring has said it's empty.
+        if ringFiles.isEmpty, (ringSystemState?.fileCount ?? 1) > 0, fileListPatience > 0 {
+            fileListPatience -= 1
+            // Wait, then ask again, in turn. An ask sent while the ring answers something else
+            // (its settings, right after linking) can be dropped, and then no wait brings the
+            // list; but asking again too soon can restart a list that was only slow to begin.
+            if fileListPatience % 2 == 0 {
+                send(.getFileList)
+                print("[muse][offline] no file list yet: asking again (0x01)")
+                scheduleFileListCompletion(after: 6.0)
+            } else {
+                print("[muse][offline] no file list yet: waiting")
+                scheduleFileListCompletion(after: 5.0)
+            }
+            return
+        }
+        // Part of the list came: the rest is slow, or the link dropped it (a Mac's link pauses
+        // longer than the gap timer allows, and loses a few entries).
+        if !ringFiles.isEmpty, !hasWholeFileList, fileListPatience > 0 {
+            fileListPatience -= 1
+            // Entries the link dropped never come on their own: ask for the list again. The
+            // passes add up, by each entry's place in the list.
+            send(.getFileList)
+            print("[muse][offline] file list: \(listedEntries.count) of \(expectedRingFileCount) so far, asking again for the rest")
+            scheduleFileListCompletion(after: 4.0)
+            return
+        }
+        takeBaselineIfNeeded()
         isListingRingFiles = false
-        print("[muse][offline] file list: \(ringFiles.count) file(s), \(unsyncedRingFiles.count) new")
+        print("[muse][offline] file list: \(listedEntries.count) entries, \(ringFiles.count) file(s), \(unsyncedRingFiles.count) new (ring says \(ringSystemState.map { String($0.fileCount) } ?? "?"))")
 
         guard pendingOfflineSync else { return }
         pendingOfflineSync = false
@@ -207,7 +337,8 @@ extension RingBLEManager {
     }
 
     private func startOfflineQueue() {
-        let candidates = unsyncedRingFiles
+        let candidates = unsyncedRingFiles + (includesOlderOnce ? olderRingFiles : [])
+        includesOlderOnce = false
         guard !candidates.isEmpty else {
             isSyncingOffline = false
             offlineQueueRemaining = 0
@@ -216,8 +347,9 @@ extension RingBLEManager {
         }
         guard canTransferOfflineFiles else { return }
 
-        offlineQueue = candidates
+        offlineQueue = syncsNewestFirst ? candidates.reversed() : candidates
         offlineQueueRemaining = candidates.count
+        offlineQueueTotal = candidates.count
         isSyncingOffline = true
         offlineSyncError = nil
         beginOfflineBackgroundTask()
@@ -445,6 +577,8 @@ extension RingBLEManager {
         offlineSyncProgress = 1
 
         let rate = elapsed > 0 ? Double(opsData.count) / 1_000 / elapsed : 0
+        // Only a recording long enough to measure: a tiny one is mostly the ask's round trip.
+        if elapsed > 1 { lastTransferRate = Double(opsData.count) / elapsed }
         print("[muse][offline] \(key) done: \(opsData.count) bytes in \(String(format: "%.1fs", elapsed)) (\(String(format: "%.0f", rate)) KB/s)")
 
         decodeOfflineRecording(opsData, file: file)
@@ -484,6 +618,7 @@ extension RingBLEManager {
         isSyncingOffline = false
         isListingRingFiles = false
         pendingOfflineSync = false
+        includesOlderOnce = false
         offlineSyncProgress = 0
         endOfflineBackgroundTask()
     }

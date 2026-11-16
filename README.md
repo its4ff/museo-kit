@@ -108,12 +108,22 @@ ring.status.firmwareIsBehind   // the ring runs older firmware than the bundled 
 **From GitHub.** File › Add Package Dependencies…, enter `https://github.com/its4ff/museo-kit`, and pin the version museo build uses (`0.2.3`, exact). In a `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/its4ff/museo-kit", exact: "0.2.3")
+.package(url: "https://github.com/its4ff/museo-kit", exact: "0.4.0")
 ```
 
 **Working on the kit itself?** Clone it next to your app's folder and open the app through a workspace that also holds `../museo-kit`. Xcode then uses the local copy in place of the tagged one (museo build's `scripts/local-kit.sh` makes that workspace).
 
-Needs iOS 26 or later, Xcode 26 and Swift tools 6.2. The kit brings in Nordic's [nRF Connect Device Manager](https://github.com/NordicSemiconductor/IOS-nRF-Connect-Device-Manager) 1.14.6 (exact) for firmware updates.
+Needs iOS 26 or macOS 26 or later, Xcode 26 and Swift tools 6.2. The kit brings in Nordic's [nRF Connect Device Manager](https://github.com/NordicSemiconductor/IOS-nRF-Connect-Device-Manager) 1.14.6 (exact) for firmware updates.
+
+**On a Mac.** The same package builds for macOS 26. There's no accessory sheet on a Mac, so `RingSetup` sets the ring up with a plain Bluetooth scan, and the kit never asks the ring to pair (the bond only carries play and pause, and a Mac's could cost the iphone its own). A Mac beside the iphone usually wants two sync options, set once after `Museo.start`:
+
+```swift
+let ring = Museo.start(name: "museo")
+ring.syncsNewestFirst = true            // a fresh recording lands in seconds, older ones follow
+ring.bringsInOnlyNewRecordings = true   // the iphone already has the ones from before
+```
+
+`RingActions.bringInEverything` brings in the older ones when asked, once. museo build's `mac/` folder is a whole menu bar app on the kit.
 
 ## App setup
 

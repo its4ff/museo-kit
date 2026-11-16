@@ -24,6 +24,11 @@ public struct RingActions {
     public var rename: () -> Void
     /// "bring them in": sync recordings waiting on the ring.
     public var syncNow: () -> Void
+    /// "bring in": everything on the ring not on this device, older recordings included,
+    /// once (`RingBLEManager.bringInEverything`).
+    public var bringInEverything: () -> Void
+    /// "stop": the recording coming in finishes, the rest stay on the ring.
+    public var stopSync: () -> Void
     /// Wipe the ring's storage. Confirm first: it can't be undone.
     public var clearStorage: () -> Void
     /// Open the firmware updater (your app decides how).
@@ -43,6 +48,8 @@ public struct RingActions {
         remove: @escaping () -> Void = {},
         rename: @escaping () -> Void = {},
         syncNow: @escaping () -> Void = {},
+        bringInEverything: @escaping () -> Void = {},
+        stopSync: @escaping () -> Void = {},
         clearStorage: @escaping () -> Void = {},
         openFirmware: @escaping () -> Void = {},
         setAutoSync: @escaping (Bool) -> Void = { _ in },
@@ -55,6 +62,8 @@ public struct RingActions {
         self.remove = remove
         self.rename = rename
         self.syncNow = syncNow
+        self.bringInEverything = bringInEverything
+        self.stopSync = stopSync
         self.clearStorage = clearStorage
         self.openFirmware = openFirmware
         self.setAutoSync = setAutoSync
@@ -74,6 +83,8 @@ public struct RingActions {
             remove: { setup.remove() },
             rename: { setup.rename() },
             syncNow: { ble.syncOfflineRecordings() },
+            bringInEverything: { ble.bringInEverything() },
+            stopSync: { ble.stopAfterCurrentRecording() },
             clearStorage: { ble.clearRingStorage() },
             openFirmware: openFirmware,
             setAutoSync: { on in

@@ -1,5 +1,25 @@
 # museo kit changelog
 
+## 0.4.0
+
+**museo kit on the mac**
+- `Package.swift` lists macOS 26 beside iOS 26. AccessorySetupKit compiles in on iOS only (`ACCESSORY_SETUP`), so on a Mac `RingSetup` sets the ring up with the plain scan. `isEnabled` and `canRename` are false there.
+- A Mac never sends the pairing ask (Treaty `0x19`). The bond only carries play and pause; asking interrupted transfers, and a Mac's bond could cost the iphone its own.
+
+**Sync for a second device** (all off by default, so an iphone app works as before)
+- `RingBLEManager.syncsNewestFirst`: the newest recording comes in first.
+- `RingBLEManager.bringsInOnlyNewRecordings`: the first whole file list draws a line, and only recordings made after it come in. `bringInEverything()` brings in the ones from before, once. `olderRingFiles` lists them.
+- `stopAfterCurrentRecording()`: the recording coming in finishes, the rest stay on the ring.
+- `RingActions.bringInEverything` and `RingActions.stopSync` for the buttons.
+- `RingStatus` adds `olderWaiting`, `waitingBytes`, `syncTotal`, `syncBytesLeft` and `transferRate`.
+
+**Steadier file lists**
+- List entries are counted by their place in the list, so two entries with the same name no longer leave a list looking unfinished.
+- When the ring holds files but no entry has come, the kit waits, then asks again, in turn (a Mac often sees 5 s and more before the first one).
+
+**One recording off the ring**
+- `RingBLEManager.deleteRingFile(_:completion:)` (Treaty `0x1B`) deletes one recording instead of formatting them all. It refuses unless the recording, and every listed recording sharing its number, is saved on this device or empty, and says why (`deletionRefusal(for:)`). Nothing in the kit calls it on its own.
+
 ## 0.3.2
 
 **Firmware 10.26** (`museo_20261026`)

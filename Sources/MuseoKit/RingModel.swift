@@ -168,6 +168,15 @@ public final class RingModel {
 
         next.isSyncing = ble.isSyncingOffline
         next.waiting = waiting(ble, link: link)
+        if link == .linked, ble.hasWholeFileList {
+            next.olderWaiting = ble.olderRingFiles.count
+            next.waitingBytes = ble.notHereBytes
+        }
+        next.transferRate = ble.lastTransferRate
+        if ble.isSyncingOffline {
+            next.syncTotal = ble.offlineQueueTotal
+            next.syncBytesLeft = ble.offlineBytesLeft
+        }
         if ble.isSyncingOffline {
             next.syncProgress = RingStatus.quantized(progress: ble.offlineSyncProgress)
             next.waiting = max(ble.offlineQueueRemaining, 1)
@@ -215,6 +224,7 @@ public final class RingModel {
     /// no per-file delete), so it counts every one of them. Use the last exact count instead,
     /// plus anything recorded since: files only pile up until the ring is cleared.
     private func waiting(_ ble: RingBLEManager, link: RingStatus.Link) -> Int {
+        if ble.bringsInOnlyNewRecordings { return newWaiting(ble, link: link) }
         guard link == .linked else {
             forgetFileList()
             return ble.offlineMuseCount
@@ -243,6 +253,23 @@ public final class RingModel {
         }
         guard let lastKnownWaiting else { return ble.offlineMuseCount }
         return lastKnownWaiting + max(0, (onRing ?? lastKnownFileCount) - lastKnownFileCount)
+    }
+
+    /// `waiting` for a device that brings in only new recordings: what the last whole list
+    /// found, plus recordings made since. Nothing until a whole list is in, since the ring's
+    /// own count is mostly recordings this device leaves there on purpose.
+    private func newWaiting(_ ble: RingBLEManager, link: RingStatus.Link) -> Int {
+        guard link == .linked else {
+            forgetFileList()
+            return 0
+        }
+        let onRing = ble.ringSystemState?.fileCount ?? 0
+        if !ble.isListingRingFiles, ble.hasWholeFileList {
+            lastKnownWaiting = ble.unsyncedRingFiles.count
+            lastKnownFileCount = max(ble.listedFileCount, onRing)
+        }
+        guard let lastKnownWaiting else { return 0 }
+        return lastKnownWaiting + max(0, onRing - lastKnownFileCount)
     }
 
     /// The link dropped or the ring was removed: the next list starts fresh.
